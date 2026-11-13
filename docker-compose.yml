@@ -1,0 +1,52 @@
+# LIMS export-collection demo.
+#
+#   portal     - local instrument portal, no account required
+#                (slow generation, accept-then-disconnect, crash-on-submit,
+#                 duplicate task switches)
+#   collector  - FastAPI collection API + SQLite state machine
+#
+# All state lives in named volumes, so restarting either container resumes
+# unfinished work.
+services:
+  portal:
+    build: ./portal
+    environment:
+      PORTAL_DATA: /data
+    ports:
+      - "8000:8000"
+    volumes:
+      - portal_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request;urllib.request.urlopen('http://localhost:8000/tasks')"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  collector:
+    build: ./collector
+    depends_on:
+      portal:
+        condition: service_healthy
+    environment:
+      COLLECTOR_DB: /data/collector.db
+      RESULT_DIR: /data/results
+      TMP_DIR: /data/tmp
+      POLL_INTERVAL: "1"
+      RECONCILE_BACKOFF: "2"
+      DOWNLOAD_BACKOFF: "2"
+    ports:
+      - "8001:8001"
+    volumes:
+      - collector_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request;urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  portal_data:
+  collector_data:
